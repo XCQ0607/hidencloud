@@ -4,6 +4,9 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
+const http = require('http');
+const os = require('os');
 
 // ==========================================
 // Part 1: Configuration & Helpers
@@ -348,8 +351,60 @@ class HidenCloudBot {
 }
 
 // ==========================================
-// Part 3: Browser Login Logic
+// Part 3: Browser Login Logic (Integrated from login.js)
 // ==========================================
+
+const CHROME_PATH = process.env.CHROME_PATH || '/usr/bin/google-chrome';
+const DEBUG_PORT = 9222;
+
+function checkPort(port) {
+    return new Promise((resolve) => {
+        const req = http.get(`http://localhost:${port}/json/version`, (res) => {
+            resolve(true);
+        });
+        req.on('error', () => resolve(false));
+        req.end();
+    });
+}
+
+async function launchChrome() {
+    if (await checkPort(DEBUG_PORT)) {
+        console.log('Chrome is already open.');
+        return;
+    }
+
+    console.log(`Launching Chrome (Detached)...`);
+    // Use OS temp directory for user data or specific tmp path
+    const userDataDir = path.join(os.tmpdir(), 'chrome_user_data_' + Date.now());
+
+    const args = [
+        `--remote-debugging-port=${DEBUG_PORT}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-gpu',
+        '--window-size=1280,720',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        `--user-data-dir=${userDataDir}`,
+        '--disable-dev-shm-usage'
+    ];
+
+    const chrome = spawn(CHROME_PATH, args, {
+        detached: true,
+        stdio: 'ignore'
+    });
+    chrome.unref();
+
+    console.log('Waiting for Chrome to initialize...');
+    for (let i = 0; i < 20; i++) {
+        if (await checkPort(DEBUG_PORT)) break;
+        await new Promise(r => setTimeout(r, 1000));
+    }
+
+    if (!await checkPort(DEBUG_PORT)) {
+        throw new Error('Chrome launch failed');
+    }
+}
 
 async function attemptTurnstileCdp(page) {
     const frames = page.frames();
@@ -417,34 +472,34 @@ async function handleVerification(page) {
     }
 
     console.log(`🚀 Starting Action Script for ${users.length} users...`);
-
-    // Launch Browser
-    // Note: In GitHub Actions (Linux) with xvfb, this works fine.
-    // We use a persistent browser instance but isolated contexts.
-    const browser = await chromium.launch({
-        headless: false, // Directed by user to use 'headed' (visible via xvfb)
-        channel: 'chrome', // Try to use installed chrome if available, else chromium
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--window-size=1280,720'
-        ]
-    });
-
-    console.log('Browser Launched.');
     const summary = [];
+
+    // Launch Chrome Process (Detached)
+    try {
+        await launchChrome();
+    } catch (e) {
+        console.error('Fatal: Could not launch Chrome.', e);
+        process.exit(1);
+    }
+
+    console.log(`Connecting to Chrome at port ${DEBUG_PORT}...`);
+    let browser;
+    try {
+        browser = await chromium.connectOverCDP(`http://localhost:${DEBUG_PORT}`);
+    } catch (e) {
+        console.error('Fatal: Could not connect to Chrome CDP.', e);
+        process.exit(1);
+    }
+
+    // Reuse the wrapper context
+    const defaultContext = browser.contexts()[0];
 
     for (let i = 0; i < users.length; i++) {
         const user = users[i];
         console.log(`\n=== Processing User ${i + 1}: ${user.username} ===`);
 
-        const context = await browser.newContext({
-            viewport: { width: 1280, height: 720 },
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        });
-        const page = await context.newPage();
+        // Use the existing context but ensure it's clean-ish or just new Page
+        const page = await defaultContext.newPage();
         await page.addInitScript(INJECTED_SCRIPT);
         page.setDefaultTimeout(60000);
 
@@ -486,7 +541,7 @@ async function handleVerification(page) {
 
             if (loginSuccess) {
                 // Get Cookies
-                const allCookies = await context.cookies();
+                const allCookies = await defaultContext.cookies();
                 const relevantCookies = allCookies.filter(c => c.domain.includes('hidencloud.com'));
                 cookieStr = relevantCookies.map(c => `${c.name}=${c.value}`).join('; ');
 
@@ -501,8 +556,7 @@ async function handleVerification(page) {
             console.error(`Browser Interaction Error: ${err.message}`);
             await page.screenshot({ path: `error_browser_${i}.png` });
         } finally {
-            // Close context to clean up browser side
-            await context.close();
+            await page.close();
         }
 
         // --- Part B: Renewal Logic ---
@@ -521,13 +575,18 @@ async function handleVerification(page) {
             summary.push({ user: user.username, status: 'Failed (Login)', services: 0 });
         }
 
+        // Clear cookies for next user
         if (i < users.length - 1) {
-            console.log('Waiting before next user...');
+            console.log('Clearing cookies for next user...');
+            await defaultContext.clearCookies();
             await sleep(5000);
         }
     }
 
-    await browser.close();
+    console.log('Cleaning up browser...');
+    try { if (browser) await browser.close(); } catch (e) { }
+
+    console.log('Done (Forced Exit).');
 
     console.log('\n\n╔════════════════════════════════════════════╗');
     console.log('║               Final Summary                ║');
