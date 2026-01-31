@@ -65,7 +65,7 @@ Fully automated in the cloud, no local environment needed, automatic Cookie upda
    - Check run logs to confirm success
 
 **Workflow Details:**
-- Auto-run: Triggers every 7 days automatically
+- Auto-run: Triggers every 3 days automatically
 - Manual trigger: Can be run anytime from Actions page
 - Cookie auto-update: Automatically updates repository variables after execution
 
@@ -176,7 +176,7 @@ Processing: cookie1 (1/2)
 
 1. **Cookie Security**: Keep `cookie.json` file secure, don't share with others
 2. **Regular Updates**: Cookies may expire, update promptly when invalid
-3. **Run Frequency**: Recommended to set scheduled task to run every 7 days
+3. **Run Frequency**: Recommended to set scheduled task to run every 7 days (every 3 days for Cloud mode recommended)
 4. **Network**: Ensure network can access hidencloud.com
 5. **Private Repo**: Use private repository for GitHub Actions to enhance security
 
@@ -193,20 +193,6 @@ Processing: cookie1 (1/2)
 | Free to Use | ✅ | ✅ | Self-hosted |
 | Recommendation | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 
-## 📝 Changelog
-
-### v3.0 (2026-01-31)
-- ☁️ Added GitHub Actions cloud automation support
-- 🔄 Auto-update cookies to repository variables
-- 🌐 Dual-mode operation: env vars priority, backward compatible with cookie.json
-- 📚 Added English documentation README_EN.md
-- 🔧 Added repository variables update tool update_vars.js
-
-### v2.0 (2026-01-31)
-- 🎉 First standalone version
-- ✅ Support reading from cookie.json
-- 🔄 Complete Cookie cache mechanism
-- 📊 Beautified console output
 
 ## 🐛 Troubleshooting
 
@@ -259,6 +245,4 @@ MIT License
 
 Thanks to HidenCloud for their services!
 
----
-
-**💡 Tip**: After first run, a `hiden_cookies_cache.json` cache file will be generated. Next run will prioritize using cached latest Cookie for higher success rate!
+Special thanks to [gally16](https://linux.do/u/gally16) for the original Qinglong script! This project optimized it and added GitHub Actions deployment and Windows local support.

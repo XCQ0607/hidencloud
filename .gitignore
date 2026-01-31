@@ -1,6 +1,5 @@
 # 依赖
 node_modules/
-package-lock.json
 
 # Cookie 配置文件（敏感信息）
 cookie.json
